@@ -1,0 +1,48 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Resources:
+  #SNS-Topic for Notification
+  CostsNotification:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: AWSCostNotification
+  # Topic Email Subscription 
+  SubscriptionToCostNotification:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      TopicArn: !Ref CostsNotification
+      Endpoint: <emailID>  #xyz@gmail.com
+  # Lambda Function
+  ProcessingLambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: costExplorerLambda
+      Handler: costExplorerLambda::costExplorerLambda.Function::FunctionHandler
+      Runtime: dotnet6
+      Environment:
+        Variables:
+          topicARN: !Ref CostsNotification  #SNS-Topic as Env Variable
+      Role: arn:aws:iam::<accountID>:role/<RoleName>
+      MemorySize: 128
+      Timeout: 300
+      CodeUri: <path-to-s3-bucket>  #s3://lambda--bucketzip/costExplorerLambda.zip
+  #EventBridge Rule
+  EventLambdaTrigger:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: EventRuleForCost
+      Description: Trigger Lambda every week to get AWS account resources costs
+      ScheduleExpression: cron( 0 0 ? * MON * )  #Every Monday
+      State: ENABLED
+      Targets:
+        - Arn: 'arn:aws:lambda:<region>:<accountID>:function:costExplorerLambda'
+          Id: <any-ID>
+  #EventBridge Permission to Trigger Lambda
+  PermissionToInvokeLambda: 
+    Type: AWS::Lambda::Permission
+    Properties: 
+      FunctionName: !Ref ProcessingLambda
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventLambdaTrigger.Arn
